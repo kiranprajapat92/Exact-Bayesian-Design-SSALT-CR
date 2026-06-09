@@ -6,27 +6,13 @@ library(bayesplot)
 library(ggplot2)
 par(cex = 1.25, mar = c(4.75, 4.85, 2.25, 1.5))
 
-source("C:/Users/Kiran/Dropbox/RWTH/Newcastle_OBD_SSALT/all_functions.R")
+source("all_functions.R")
 
 strt <- Sys.time()
 
 set.seed(2026) #135
 
-###########################################################################
-
-# ============================================================
-# PRIOR SELECTION (CHANGE ONLY THIS)
-# ============================================================
-# 1 = Uniform (mean ± 2SE)
-# 2 = Uniform (mean ± 3SE)
-# 3 = Uniform (bootstrap percentile CI)
-# 4 = Gamma (mean/SE matched)
-# 5 = Normal (mean/SE matched)
-
-
-# prior_type <- 4   # 1,2,3,4,5
-
-#######  parameters #########
+# ---------  parameters ----------
 
 n = 35
 tc  <- 6
@@ -46,7 +32,7 @@ para_true <- para_hat
 
 
 
-## Gamma 
+# ------------- Gamma Priors --------- 
 # Cause 1
 hpar11 <- c(0.1634133, 0.3704860) # t_{0,1}^q
 hpar21 <- c(4.280502, 1.2736822)  # -b1
@@ -79,15 +65,16 @@ gphi22 <- gamma_hyper(hpar22)
 gphi32 <- gamma_hyper(hpar32)
 
 
-##############################################################
-
 a1 <- para_true[1]
 b1 <- para_true[2]
 betaa1 <- para_true[3]
 a2 <- para_true[4]
 b2 <- para_true[5]
 betaa2 <- para_true[6]
-# Quantile of lifetime distribution under SSALT
+
+
+# ----------- Quantile of lifetime distribution under SSALT --------
+
 p <- 0.01
 funcc_fs <- function(s)
 {
@@ -118,7 +105,8 @@ tp_x0 <- tp;
 tp_x0
 
 
-# Transformed parameters for priors
+# ------------ Transformed parameters for priors --------------
+
 q <- 0.001
 tq_1 <- exp(para_hat[1]) * (-log(1 - q))^(1 / para_hat[3]);
 tq_2 <- exp(para_hat[4]) * (-log(1 - q))^(1 / para_hat[6]);
@@ -129,9 +117,10 @@ trans_para_cause1 <- c(tq_1, -b1, betaa1)
 trans_para_cause2 <- c(tq_1, -b2, betaa2)
 round(as.data.frame(matrix(c(trans_para_cause1,trans_para_cause2),2,3,byrow=TRUE), row.names = c("cause1","cause2")),digits = 3)
 
-###########################################################################
 
-## 1. Simulate data
+
+
+# ------------- Simulate data -------------
 sim <- simSSAT_CR(
   n = n,
   tau = tau,
@@ -146,7 +135,6 @@ C_i <- sim$C_i
 
 n1<-sum(t<=tau)
 nc<-sum(t<=tc)
-############################################################
 
 
 file <- file.path(cmdstan_path(), "examples/bernoulli/bernoulli_han_ssalt_gamma_repara.stan")
@@ -182,7 +170,6 @@ data_list <- list(
   x0 = x0,
   p = p,
   
-  # lognormal priors
   gphi11 = gphi11,
   gphi21 = gphi21,
   gphi31 = gphi31,
@@ -195,6 +182,8 @@ data_list <- list(
 json_file <- tempfile(fileext = ".json")
 write_stan_json(data_list, json_file)
 # cat(readLines(json_file), sep = "\n")
+
+# ----------- Posterior model fiting in Stan -------
 
 SSAT.sim <- mod$sample(
   data = json_file,
@@ -214,21 +203,21 @@ tp_log_tp_summary <- SSAT.sim$summary(variables = c("tp", "log_tp"), "sd")
 sd_tp <- tp_log_tp_summary[1,2]
 sd_log_tp <- tp_log_tp_summary[2,2]
 
-########## Fit Check ############
+# ---------------- Fit Check ---------------
 
 check_stan_fit <- function(fit) {
   
   summ <- fit$summary()
   
-  # 1. Rhat check
+  #  Rhat check
   rhat_ok <- all(summ$rhat < 1.01, na.rm = TRUE)
   
-  # 2. Divergences
+  #  Divergences
   sampler_diag <- fit$sampler_diagnostics()
   n_div <- sum(sampler_diag[, , "divergent__"])
   div_ok <- (n_div == 0)
   
-  # 3. Treedepth
+  #  Treedepth
   n_treedepth <- sum(sampler_diag[, , "treedepth__"] >= 
                        fit$metadata()$max_treedepth)
   tree_ok <- (n_treedepth == 0)
@@ -244,126 +233,12 @@ check_stan_fit <- function(fit) {
 }
 
 check_stan_fit(SSAT.sim)
-#############################################################
 
-
-# color_scheme_set("darkgray")
-# 
-# my_theme <- ggplot2::theme_gray() + theme(
-#   legend.text  = element_text(size = 16),
-#   legend.title = element_text(size = 16),
-#   axis.text    = element_text(size = 14),
-#   axis.title   = element_text(size = 15),
-#   strip.text   = element_text(size = 16)
-# )
-# 
-# # Plot 1: a1, a2, b1, b2
-# # Export -> Save as EPS -> Width: 800, Height: 700
-# 
-# my_labeller1 <- as_labeller(
-#   x = c(
-#     'a1' = 'a[1]',
-#     'a2' = 'a[2]',
-#     'b1' = 'b[1]',
-#     'b2' = 'b[2]'
-#   ),
-#   default = label_parsed
-# )
-# 
-# p1 <- mcmc_combo(
-#   x       = SSAT.sim$draws(),
-#   combo   = c("dens_overlay", "trace"),
-#   pars    = parameters[1:4],
-#   facet_args = list(
-#     ncol     = 1,
-#     labeller = my_labeller1
-#   ),
-#   gg_theme = my_theme
-# )
-# print(p1)
-# 
-# 
-# # Plot 2: beta1, beta2, tp, log_tp
-# # Export -> Save as EPS -> Width: 800, Height: 700
-# 
-# my_labeller2 <- as_labeller(
-#   x = c(
-#     'beta1'  = 'beta[1]',
-#     'beta2'  = 'beta[2]',
-#     'tp'     = 't[p](x[0])',
-#     'log_tp' = 'log(t[p](x[0]))'
-#   ),
-#   default = label_parsed
-# )
-# 
-# p2 <- mcmc_combo(
-#   x       = SSAT.sim$draws(),
-#   combo   = c("dens_overlay", "trace"),
-#   pars    = parameters[5:8],
-#   facet_args = list(
-#     ncol     = NULL,
-#     labeller = my_labeller2
-#   ),
-#   gg_theme = my_theme
-# )
-# print(p2)
-# 
-# 
-# # Plot 3: ACF
-# # Export -> Save as PDF -> Width: 12, Height: 8
-# 
-# my_labeller3 <- as_labeller(
-#   x = c(
-#     'a1'     = 'a[1]',
-#     'a2'     = 'a[2]',
-#     'b1'     = 'b[1]',
-#     'b2'     = 'b[2]',
-#     'beta1'  = 'beta[1]',
-#     'beta2'  = 'beta[2]',
-#     'tp'     = 't[p](x[0])',
-#     'log_tp' = 'log(t[p](x[0]))',
-#     '1'      = '1',
-#     '2'      = '2',
-#     '3'      = '3'
-#   ),
-#   default = label_parsed
-# )
-# 
-# p3 <- mcmc_acf(
-#   SSAT.sim$draws(),
-#   pars = parameters,
-#   lags = 15,
-#   facet_args = list(
-#     labeller = my_labeller3
-#   )
-# ) + theme(
-#   strip.text = element_text(size = 17),
-#   axis.text  = element_text(size = 15),
-#   axis.title = element_text(size = 16)
-# )
-# print(p3)
-# 
-# # # mcmc_dens(SSAT.sim$draws(), pars = parameters)
-# 
-# mcmc_chains <- SSAT.sim$draws()
-# 
-# # Choose the relevant columns for output
-# output_data <- SSAT.sim$summary()
-# # Specify the output file path
-# output_file <- "C:/Users/Kiran Prajapat/OneDrive/xiao_liu_data/diago_temp2/cmdstan_output.csv"
-# # # Save the data.frame to a CSV file
-# # write.csv(output_data, file = output_file, row.names = FALSE)
-# 
-# SSAT.sim$print(max_rows = 20)
-# SSAT.sim$summary(variables = c("a1", "b1", "beta1", "a2", "b2", "beta2","tp", "log_tp"), c("mean","sd"))
-# 
-# # round(as.data.frame(matrix(c(para_cause1,para_cause2),2,5,byrow=TRUE), row.names = c("cause1","cause2")),digits = 3)
-# # round(as.data.frame(matrix(c(trans_para_cause1,trans_para_cause2),2,3,byrow=TRUE), row.names = c("cause1","cause2")),digits = 3)
 
 library(ggplot2)
 library(gridExtra)
 
-# ---- base theme ----
+
 base_theme <- theme_bw(base_size = 12) +
   theme(
     panel.grid.minor = element_blank(),
@@ -375,7 +250,7 @@ base_theme <- theme_bw(base_size = 12) +
     plot.margin      = margin(4, 6, 4, 6)
   )
 
-# ---- darker, richer base colours ----
+
 base_colours <- c(
   a1     = "#1A4A5E",
   a2     = "#A8115A",
@@ -387,7 +262,7 @@ base_colours <- c(
   log_tp = "#001064"
 )
 
-# ---- 3 shades: dark, medium, light ----
+
 make_shades <- function(base_col) {
   light  <- colorRampPalette(c(base_col, "#FFFFFF"))(5)
   shades <- c(base_col, light[1], light[2])
@@ -396,7 +271,6 @@ make_shades <- function(base_col) {
 }
 
 
-# ---- labels ----
 lab <- list(
   a1     = "a[1]",
   a2     = "a[2]",
@@ -408,7 +282,8 @@ lab <- list(
   log_tp = "log(t[p](x[0]))"
 )
 
-# ---- main plotting function ----
+# ------- main plotting function -------
+
 plot_trace_dens_acf <- function(fit, pars, labeller_list,
                                 base_colours, n_lags = 15) {
   plot_list <- list()
@@ -423,8 +298,7 @@ plot_trace_dens_acf <- function(fit, pars, labeller_list,
     draws_arr <- fit$draws(variables = par)
     n_iter    <- dim(draws_arr)[1]
     n_chains  <- dim(draws_arr)[2]
-    
-    # long format — explicit chain extraction
+  
     df <- do.call(rbind, lapply(1:n_chains, function(ch) {
       data.frame(
         iteration = 1:n_iter,
@@ -512,7 +386,6 @@ plot_trace_dens_acf <- function(fit, pars, labeller_list,
   )
 }
 
-# ---- run and save ----
 
 # Figure 1: a1, a2, b1, b2
 p_fig1 <- plot_trace_dens_acf(
@@ -553,7 +426,7 @@ plot_trace_dens_acf(SSAT.sim,
                     n_lags        = 15)
 dev.off()
 
-# also save as PDF
+# save as PDF
 pdf("fig_diag_ab.pdf", width = 15, height = 14)
 plot_trace_dens_acf(SSAT.sim,
                     pars          = c("a1","a2","b1","b2"),
