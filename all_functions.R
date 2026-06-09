@@ -1,5 +1,3 @@
-rm(list = ls())
-
 
 # ---------- simulate observations under simple SSALT with competeing risks ----------
 
