@@ -1,11 +1,5 @@
 functions {
 
-  // -------------------------------------------------------
-  // Reparameterised: accept log_thetaa instead of thetaa
-  // so all internal divisions use exp(log_theta) which
-  // is always finite and well-behaved.
-  // -------------------------------------------------------
-
   vector sai_l1(int j, vector t, matrix log_thetaa) {
     return t * exp(-log_thetaa[1, j]);
   }
@@ -32,7 +26,7 @@ functions {
     vector[n] s21 = sai_l2(1, t, tau, log_thetaa);
     vector[n] s22 = sai_l2(2, t, tau, log_thetaa);
 
-    // --- Failures before tau ---
+    // ------ Failures before tau ------
     for (i in 1:n1) {
       if (C_i[i] == 1) {
         loglik += log(beta1)
@@ -49,7 +43,7 @@ functions {
       }
     }
 
-    // --- Failures after tau ---
+    // ------ Failures after tau ------
     for (i in (n1 + 1):nc) {
       if (C_i[i] == 1) {
         loglik += log(beta1)
@@ -66,7 +60,7 @@ functions {
       }
     }
 
-    // --- Censored observations ---
+    // ------ Censored observations ------
     for (i in (nc + 1):n) {
       loglik += -pow(s21[i], beta1)
                 - pow(s22[i], beta2);
@@ -124,24 +118,19 @@ transformed parameters {
   real a2 = log(phi_12) - log(-log(0.999)) / beta2;
   real b2 = -phi_22;
 
-  // KEY CHANGE: store log(theta) directly — never compute
-  // exp(large number). The likelihood is rewritten to use
-  // log_thetaa so exp() only appears inside bounded terms.
   matrix[2,2] log_thetaa;
   log_thetaa[1,1] = a1 + b1 * x1;   // log(theta_11)
   log_thetaa[1,2] = a2 + b2 * x1;   // log(theta_12)
   log_thetaa[2,1] = a1 + b1 * x2;   // log(theta_21)
   log_thetaa[2,2] = a2 + b2 * x2;   // log(theta_22)
 
-  // Recover thetaa on original scale for output only
-  // (not used inside likelihood)
   matrix[2,2] thetaa;
   thetaa[1,1] = exp(log_thetaa[1,1]);
   thetaa[1,2] = exp(log_thetaa[1,2]);
   thetaa[2,1] = exp(log_thetaa[2,1]);
   thetaa[2,2] = exp(log_thetaa[2,2]);
 
-  // Newton solve for t_p fully on log scale
+  // ------ Newton solve for t_p on log scale ------
   real log_tp = log(10);
 
   for (k in 1:30) {
