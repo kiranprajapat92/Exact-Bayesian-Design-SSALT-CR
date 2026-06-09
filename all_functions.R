@@ -1,7 +1,7 @@
 rm(list = ls())
 
 
-# ---------- simulator ----------
+# ---------- simulate observations under simple SSALT with competeing risks ----------
 
 simSSAT_CR <- function(n, tau, tc, para_vec, x1, x2)
 {
@@ -71,10 +71,8 @@ simSSAT_CR <- function(n, tau, tc, para_vec, x1, x2)
 
 
 
+# ---------- Likelihood function ------------
 
-############################################################
-## 4. Likelihood function 
-############################################################
 
 likelihood_para_vec <- function(para_vec, t, C_i, tau, n1, nc, x1, x2) {
   a1 <- para_vec[1]; b1 <- para_vec[2]; beta1 <- para_vec[3]
@@ -129,9 +127,9 @@ likelihood_para_vec <- function(para_vec, t, C_i, tau, n1, nc, x1, x2) {
   return(-prob)
 }
 
-############################################################
-## 4. CDF (not censored or truncated)
-############################################################
+
+
+# ---------- CDF (not censored or truncated) ------------
 
 
 cdf_stepstress <- function(t, tau, thetaa, beta1, beta2) {
@@ -151,9 +149,9 @@ cdf_stepstress <- function(t, tau, thetaa, beta1, beta2) {
   return(1 - exp(-Lambda))
 }
 
-############################################################
-## 7. Empirical CDF 
-############################################################
+
+# ----------  Empirical CDF --------------
+
 
 empirical_cdf <- function(t, tc) {
   t <- sort(t)
@@ -165,9 +163,9 @@ empirical_cdf <- function(t, tc) {
   return(F_i[-1])
 }
 
-############################################################
-## 7. CvM statistics value
-############################################################
+
+# ----------  statistics value --------------
+
 
 CvM_stat_fun <- function(t_sample) {
   t_sample <- sort(t_sample)
@@ -183,87 +181,3 @@ CvM_stat_fun <- function(t_sample) {
   }
   BB
 }
-
-# ############################################################
-# ## 1. Solar lighting device data
-# ############################################################
-# 
-# solar_data <- data.frame(
-#   t = c(
-#     0.140, 0.783, 1.324, 1.582,
-#     1.716, 1.794, 1.883, 2.293,
-#     2.660, 2.674, 2.725, 3.085,
-#     3.924, 4.396, 4.612, 4.892,
-#     5.002, 5.022, 5.082, 5.112,
-#     5.147, 5.238, 5.244, 5.247,
-#     5.305, 5.337, 5.407, 5.408,
-#     5.445, 5.483, 5.717
-#   ),
-#   C_i = c(
-#     1,2,2,1, 2,2,2,2,
-#     2,2,2,2, 2,2,1,2,
-#     1,2,2,1, 1,1,1,1,
-#     1,2,1,2, 1,1,2
-#   )
-# )
-# 
-# ############################################################
-# ## 2. Design parameters
-# ############################################################
-# 
-# tc  <- 6
-# tau <- 5
-# 
-# s0 <- 1/293
-# s1 <- 1/293
-# s2 <- 1/353
-# 
-# x1 <- (s1 - s0) / (s2 - s0)
-# x2 <- (s2 - s0) / (s2 - s0)
-# 
-# ############################################################
-# ## 3. Order data and censoring
-# ############################################################
-# 
-# solar_data <- solar_data[order(solar_data$t), ]
-# 
-# t_obs <- solar_data$t
-# C_obs <- solar_data$C_i
-# 
-# n  <- 35
-# n1 <- sum(t_obs <= tau)
-# nc <- sum(t_obs <= tc)
-# 
-# t_for_lik <- c(t_obs[t_obs <= tc], rep(tc, n - nc))
-# C_for_lik <- c(C_obs[t_obs <= tc], rep(NA, n - nc))
-# 
-# para_hat <- c(4.5064079, -4.7131110,  0.7692292,  2.0409831, -1.2277314,  1.5320872)
-# thetaa_hat <- matrix(c(90.595803, 7.698173, 0.813261, 2.255229), nrow = 2, ncol = 2, byrow=TRUE)
-#   
-# likelihood_para_vec(
-#   para_vec = para_hat, 
-#   t = t_for_lik,
-#   C_i = C_for_lik,
-#   tau = tau,
-#   n1 = n1,
-#   nc = nc,
-#   x1 = x1,
-#   x2 = x2
-# )
-# 
-# simSSAT_CR(
-#   n = n, 
-#   tau = tau,
-#   tc = tc, 
-#   para_vec = para_hat, 
-#   x1 = x1,
-#   x2 = x2
-# )
-# 
-# cdf_stepstress(
-#   t = c(5,6),
-#   tau = tau,
-#   thetaa = thetaa_hat,
-#   beta1 = para_hat[3],
-#   beta2 = para_hat[6]
-# )
