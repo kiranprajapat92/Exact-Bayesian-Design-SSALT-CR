@@ -10,19 +10,14 @@ library(lattice)
 
 par(cex = 1.25, mar = c(4.75, 4.85, 2.25, 1.5))
 
-source("/mnt/nfs/home/nkp117/largefiles/comet_test/all_functions.R")
+source("all_functions.R")
 
-# ============================================================
-# Fixed stress boundaries
-# ============================================================
+# ---------- Fixed stress boundaries ----------
 
 s0 <- 1/293    # normal use stress  (fixed lower bound)
 s2 <- 1/353    # highest accelerated stress (fixed upper bound)
 
-# ============================================================
-# s1 grid: x1 = (s1-s0)/(s2-s0) from 0.1 to 0.7
-# Avoid 0 and 1 — those collapse the stress contrast
-# ============================================================
+# s1 grid: x1 = (s1-s0)/(s2-s0) from 0.1 to 0.9 
 
 x1_grid  <- seq(0.1, 0.9, length.out = 9)   
 s1_grid  <- s0 + x1_grid * (s2 - s0)
@@ -31,16 +26,12 @@ cat("s1 grid (1/s1 rounded):\n"); print(round(1/s1_grid))
 cat("\nx1 grid:\n");               print(round(x1_grid, 3))
 cat("\n")
 
-# ============================================================
-# Master output directory
-# ============================================================
 
-master_dir <- "/mnt/nfs/home/nkp117/largefiles/Prior_I/"
+master_dir <- "Path to your folder"
 dir.create(master_dir, recursive = TRUE, showWarnings = FALSE)
 
-# ============================================================
-# Fixed model parameters
-# ============================================================
+
+# ---------- Fixed model parameters ------------
 
 set.seed(2026)
 
@@ -54,9 +45,8 @@ para_hat  <- c(4.5064079, -4.7131110, 0.7692292,
                2.0409831, -1.2277314, 1.5320872)
 para_true <- para_hat
 
-# ============================================================
-# Gamma hyperparameters
-# ============================================================
+
+# ----------- Gamma hyperparameters --------------
 
 gamma_hyper <- function(mean_sd) {
   mean_x <- mean_sd[1];  sd_x <- mean_sd[2]
@@ -80,9 +70,7 @@ init_fun <- function() {
   )
 }
 
-# ============================================================
-# Diagnostics thresholds
-# ============================================================
+# -------------- Diagnostics thresholds --------------
 
 SD_THRESHOLD   <- 1e4
 RHAT_THRESHOLD <- 1.01
@@ -90,18 +78,13 @@ ESS_THRESHOLD  <- 300
 WARN_VALID     <- 950
 ERROR_VALID    <- 900
 
-# ============================================================
-# Design grid and B
-# ============================================================
 
-#tau_grid <- seq(1.59375, 5.75, length.out = 20)      # 25 tau values
-#tau_grid <- seq(0.05, 5.95, length.out = 25)
+# ------------- Design grid and B ------------
+
 tau_grid <- seq(0.05, 5.95, length.out = 25)
 B        <- 1000
 
-# ============================================================
-# Parallelisation — setup ONCE, reused for all loops
-# ============================================================
+# ---------- Parallelisation ----------
 
 total_cores    <- as.integer(Sys.getenv("SLURM_NTASKS", unset = detectCores()))
 chains_per_fit <- 3
@@ -114,25 +97,17 @@ cat("Using workers:",  n_workers, "\n\n")
 cl <- makePSOCKcluster(n_workers)
 registerDoParallel(cl)
 
-# ============================================================
-# Compile Stan model ONCE — shared across all s1 and tau
-# ============================================================
+#  ------------ Compile Stan model ----------
 
 stan_file <- file.path(cmdstan_path(),
                        "examples/bernoulli/bernoulli_han_ssalt_gamma_repara.stan")
 mod <- cmdstan_model(stan_file, compile = TRUE)
 
-# ============================================================
-# Storage for combined surface — accumulated across s1 loop
-# ============================================================
 
 surface_summary   <- data.frame()
 surface_avg_sds   <- data.frame()
 surface_avg_means <- data.frame()
 
-# ============================================================
-# OUTER LOOP: over s1 values
-# ============================================================
 
 for (s1_idx in seq_along(s1_grid)) {
 
@@ -150,7 +125,7 @@ for (s1_idx in seq_along(s1_grid)) {
 
   all_results <- vector("list", length(tau_grid))
 
-  # ---- MIDDLE LOOP: tau (sequential) ----------------------
+  # ---------- middle loop of tau (sequential) ------------
 
   for (i in seq_along(tau_grid)) {
 
@@ -183,7 +158,8 @@ for (s1_idx in seq_along(s1_grid)) {
       json_file <- tempfile(fileext = ".json")
       write_stan_json(data_list, json_file)
 
-      # --- First attempt ---
+      # ---------- First attempt ----------
+      
       fit <- mod$sample(
         data            = json_file,
         chains          = chains_per_fit,
@@ -206,7 +182,8 @@ for (s1_idx in seq_along(s1_grid)) {
                   any(summ$ess_tail < ESS_THRESHOLD,   na.rm = TRUE)
       bad_fit  <- (n_div > 0) || bad_rhat || bad_inf || bad_sd || bad_ess
 
-      # --- Refit ---
+      # ----------- Refit -----------
+      
       if (bad_fit) {
         fit <- mod$sample(
           data            = json_file,
@@ -277,11 +254,9 @@ for (s1_idx in seq_along(s1_grid)) {
       n_discarded = length(disc_reps)
     )
 
-  } # end tau loop
+  } # end the tau loop
 
-  # ----------------------------------------------------------
-  # Per-s1: design summary
-  # ----------------------------------------------------------
+  # ------------ design summary for each s1 ---------------
 
   design_summary <- data.frame(
     s1          = s1,
@@ -301,23 +276,19 @@ for (s1_idx in seq_along(s1_grid)) {
     cat(sprintf("    tau=%.4f : %d/%d (%.1f%%)\n",
                 r$tau, r$n_valid, B, 100*r$n_valid/B))
 
-  # ----------------------------------------------------------
-  # Per-s1: save RData
-  # ----------------------------------------------------------
 
   save.image(file = paste0(out_dir, "preposterior_s1_", s1_label, "_full.RData"))
 
-  # ----------------------------------------------------------
-  # Per-s1: CSVs
-  # ----------------------------------------------------------
-
+  
   write.csv(design_summary,
             paste0(out_dir, "design_summary_s1_", s1_label, ".csv"),
             row.names = FALSE)
 
+                         
   valid_results <- Filter(function(r) !is.null(r$avg_sds) && length(r$avg_sds) > 1,
                           all_results)
   param_names <- names(valid_results[[1]]$avg_means)
+                         
 
   avg_means_df <- do.call(rbind, lapply(valid_results, function(r) {
     df <- as.data.frame(t(r$avg_means))
@@ -339,9 +310,7 @@ for (s1_idx in seq_along(s1_grid)) {
 
   cat(sprintf("  Saved all outputs for s1 = 1/%s  ->  %s\n", s1_label, out_dir))
 
-  # ----------------------------------------------------------
-  # Per-s1: SD and Means plots
-  # ----------------------------------------------------------
+  # ------------  SD and Means plots for each s1 --------------
 
   selected_params <- c("a1","a2","b1","b2","beta1","beta2",
                        "thetaa[1,1]","thetaa[2,1]",
@@ -376,9 +345,7 @@ for (s1_idx in seq_along(s1_grid)) {
   ggsave(paste0(out_dir,"plot_means_s1_",s1_label,".pdf"), p_mean, width=14, height=10)
   ggsave(paste0(out_dir,"plot_means_s1_",s1_label,".eps"), p_mean, width=14, height=10, device="eps")
 
-  # ----------------------------------------------------------
-  # Accumulate into surface
-  # ----------------------------------------------------------
+  # -----------------  surface inputs ------------------
 
   surface_summary   <- rbind(surface_summary,   design_summary)
   surface_avg_sds   <- rbind(surface_avg_sds,   avg_sds_df)
@@ -388,9 +355,7 @@ for (s1_idx in seq_along(s1_grid)) {
 
 stopCluster(cl)
 
-# ============================================================
-# Save full combined surface
-# ============================================================
+# ---------- Save full combined surface ----------
 
 save.image(file = paste0(master_dir, "surface_full.RData"))
 
@@ -407,9 +372,8 @@ cat("Saved: surface_avg_sds.csv\n")
 cat("Saved: surface_avg_means.csv\n")
 
 
-# ============================================================
-# Raw optimal design points across full surface
-# ============================================================
+#  -------------- Raw optimal design points across the full surface ----------
+                                     
 
 opt_tp    <- surface_summary[which.min(surface_summary$C1_tp),    ]
 opt_logtp <- surface_summary[which.min(surface_summary$C1_logtp), ]
@@ -417,9 +381,8 @@ opt_logtp <- surface_summary[which.min(surface_summary$C1_logtp), ]
 cat("\n--- Optimal design (C1_tp) ---\n");    print(opt_tp)
 cat("\n--- Optimal design (C1_logtp) ---\n"); print(opt_logtp)
 
-# ============================================================
-# Kernel smoother — applied after loop using surface_summary
-# ============================================================
+                                     
+# -------------- Kernel smoothing --------------
 
 smooth_1d <- function(tau_vec, c_vec, n_fine = 500) {
   h        <- tau_vec[2] - tau_vec[1]
@@ -435,9 +398,8 @@ smooth_1d <- function(tau_vec, c_vec, n_fine = 500) {
        c_star   = c_smooth[opt_idx])
 }
 
-# ============================================================
-# Smoothed one-variable optimal designs — one row per s1
-# ============================================================
+                                     
+# ------------ Smoothing  of one-variable optimal designs for each s1 ----------
 
 cat("\n============================================================\n")
 cat("Smoothed one-variable optimal designs\n")
@@ -472,7 +434,7 @@ for (x1_val in x1_vals_unique) {
     C1_logtp_smooth = sm_C2$c_star
   )
 
-  # collect smooth plot data
+  
   smooth_plot_data[[length(smooth_plot_data) + 1]] <- list(
     s1_lab  = s1_lab,
     x1_val  = x1_val,
@@ -493,9 +455,8 @@ write.csv(smoothed_onevariable,
 cat("Saved: smoothed_onevariable_optimal.csv\n")
 
 
-# ============================================================
-# Smoothed two-variable optimal design
-# ============================================================
+# ------------- Smoothing of two-variable optimal design -----------------
+                                     
 
 opt2_C1 <- smoothed_onevariable[which.min(smoothed_onevariable$C1_tp_smooth), ]
 opt2_C2 <- smoothed_onevariable[which.min(smoothed_onevariable$C1_logtp_smooth), ]
@@ -506,10 +467,8 @@ print(opt2_C1)
 cat("\n--- Smoothed two-variable optimal design (C1_logtp) ---\n")
 print(opt2_C2)
 
-# ============================================================
-# Per-s1 smooth plots: raw points + smooth curve
-# saved to each s1 subfolder
-# ============================================================
+                                     
+# ----------- smooth plots for each s1 (one-variable design) ------------
 
 for (item in smooth_plot_data) {
 
@@ -563,9 +522,9 @@ for (item in smooth_plot_data) {
 }
 
 
-# ============================================================
-# 3D Surface plots — wireframe with 2D kernel-smoothed surface
-# ============================================================
+                                     
+# -------------- 3D Surface plots with 2D kernel-smoothing --------------
+                                     
 
 tau_vals <- sort(unique(surface_summary$tau))
 x1_vals  <- sort(unique(surface_summary$x1))
@@ -636,13 +595,13 @@ for (crit_col in c("C1_tp", "C1_logtp")) {
 }
 
 
-
+                                     
 # Reset par
 par(mfrow = c(1,1))
 
-# ============================================================
-# Criterion curves: one curve per x1, plotted against tau
-# ============================================================
+
+                                     
+# -------------- Criterion curves: one curve per x1, plotted against tau -----------
 
 for (crit_col in c("C1_tp","C1_logtp")) {
 
@@ -665,10 +624,7 @@ for (crit_col in c("C1_tp","C1_logtp")) {
   print(p_curves)
 }
 
-# ============================================================
-# SD surface heatmaps: one per selected parameter
-# (main parameters only — excludes theta to avoid noise)
-# ============================================================
+# ------------ SD surface (heatmaps) -----------
 
 params_for_surface <- c("a1","a2","b1","b2","beta1","beta2","tp","log_tp")
 
